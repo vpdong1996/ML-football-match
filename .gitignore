@@ -1,0 +1,10 @@
+models/best.pt
+models/last.pt
+input_videos/
+output_video/
+stubs/
+runs/
+tracker/__pycache__
+
+trainning/
+yolov8n.pt
