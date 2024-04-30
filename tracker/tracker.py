@@ -5,6 +5,9 @@ import pickle
 import os
 import sys
 import cv2
+import pandas as pd
+import numpy as np
+
 sys.path.append("../")
 
 
@@ -12,6 +15,18 @@ class Tracker:
     def __init__(self, model_path) -> None:
         self.model = YOLO(model_path)
         self.tracker = sv.ByteTrack()
+
+    def interpolate_ball_positions(self, ball_pos):
+        ball_pos = [x.get(1, {}).get('bbox', []) for x in ball_pos]
+        df_ball_pos = pd.DataFrame(ball_pos, columns=['x1', 'y1', 'x2', 'y2'])
+
+        # interpolate missing values
+        df_ball_pos = df_ball_pos.interpolate()
+        df_ball_pos = df_ball_pos.bfill()
+
+        ball_pos = [{1: {"bbox": x}} for x in df_ball_pos.to_numpy().tolist()]
+
+        return ball_pos
 
     def detect_frames(self, frames):
         batchSize = 20
@@ -92,13 +107,22 @@ class Tracker:
 
             # Draw player
             for track_id, player in player_dict.items():
+                color = player.get("team_color", (0, 0, 255))
                 frame = self.draw_ellipse(
-                    frame, player["bbox"], (0, 255, 255), track_id)
+                    frame, player["bbox"], color, track_id)
+
+                if player.get("has_ball", False):
+                    frame = self.draw_triangle(
+                        frame, player["bbox"], (0, 0, 255))
 
             # Draw referee
             for track_id, ref in referee_dict.items():
                 frame = self.draw_ellipse(
-                    frame, ref["bbox"], (0, 0, 255))
+                    frame, ref["bbox"], (0, 255, 255))
+
+            # Draw ball
+            for track_id, ball in ball_dict.items():
+                frame = self.draw_triangle(frame, ball["bbox"], (0, 255, 0))
 
             output_video_frames.append(frame)
 
@@ -139,4 +163,15 @@ class Tracker:
             cv2.putText(frame, f"{track_id}",
                         (int(x1_text), int(y1_rect + 15)),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 2)
+        return frame
+
+    def draw_triangle(self, frame, bbox, color):
+        y = int(bbox[1])
+        x, _ = get_center_of_bbox(bbox)
+
+        # 3 vertices of triangle
+        triangle_points = np.array([[x, y], [x-10, y-20], [x+10, y-20]])
+        cv2.drawContours(frame, [triangle_points], 0, color, cv2.FILLED)
+        cv2.drawContours(frame, [triangle_points], 0, (0, 0, 0), 2)
+
         return frame
